@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>A Cavaleira: Metade Invisível</title>
+<style>
+:root{--ink:#2a1a12;--paper:#f3e6c8;--gold:#c9962b;--blue:#1d3f8a;--red:#9b2335}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#17110d;color:var(--ink);font-family:Georgia,"Times New Roman",serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+#app{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#wrap{position:relative;width:min(100vw,calc(100vh*800/480));aspect-ratio:800/480;font-size:calc(min(100vw,calc(100vh*800/480))/50)}
+canvas{width:100%;height:100%;display:block;image-rendering:pixelated;background:#000}
+#ov{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(20,12,8,.72);padding:2%}
+#ov.show{display:flex}
+.card{background:var(--paper);border:.35em solid var(--gold);outline:.15em solid var(--ink);border-radius:.6em;padding:1.2em 1.6em;max-width:92%;max-height:96%;overflow:auto;text-align:center;box-shadow:0 .5em 2em #000a}
+.card h1{margin:.1em 0 .2em;font-size:2.1em;line-height:1.05;color:var(--ink)}
+.card h2{margin:.1em 0 .4em;font-size:1.5em;color:var(--blue)}
+.card p{margin:.4em 0;font-size:1.05em;line-height:1.35}
+.card .sub{color:var(--red);font-style:italic}
+.btn{display:inline-block;margin:.4em .3em 0;padding:.5em 1.1em;font:700 1.1em Georgia,serif;color:#fff;background:var(--blue);border:.15em solid var(--ink);border-radius:.4em;cursor:pointer}
+.btn:active{transform:translateY(.1em)}
+.btn.alt{background:var(--red)}
+.btn.sm{font-size:.9em;padding:.4em .8em;background:#6b5a3a}
+.opt{display:block;width:100%;margin:.4em 0;padding:.55em .8em;text-align:left;font:1.05em Georgia,serif;background:#fff8e6;border:.14em solid var(--ink);border-radius:.4em;cursor:pointer}
+.opt.ok{background:#bfe5b0}.opt.no{background:#f0b6b0}
+ul.facts{text-align:left;margin:.4em 0;padding-left:1.2em;font-size:1em;line-height:1.3}
+ul.facts li{margin:.25em 0}
+ul.facts li.got::marker{content:"\2605  ";color:var(--gold)}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:.3em;margin-top:.4em}
+.small{font-size:.85em;opacity:.8}
+#touch{position:fixed;left:0;right:0;bottom:0;display:none;justify-content:space-between;padding:0 3vw 3vh;pointer-events:none;z-index:5}
+#touch .g{display:flex;gap:2vw;pointer-events:auto}
+.tb{width:17vmin;height:17vmin;max-width:90px;max-height:90px;border-radius:50%;background:rgba(243,230,200,.35);border:3px solid rgba(243,230,200,.8);color:#fff;font:700 28px sans-serif;display:flex;align-items:center;justify-content:center}
+.tb.on{background:rgba(201,150,43,.7)}
+@media (pointer:coarse){#touch{display:flex}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="wrap">
+    <canvas id="c" width="800" height="480"></canvas>
+    <div id="ov"><div class="card" id="card"></div></div>
+  </div>
+</div>
+<div id="touch">
+  <div class="g"><div class="tb" id="bl">&#9664;</div><div class="tb" id="br">&#9654;</div></div>
+  <div class="g"><div class="tb" id="bj">&#9650;</div></div>
+</div>
+<script>
+"use strict";
+/* ================= DADOS DO JOGO ================= */
+const T=32,W=800,H=480,ROWS=15,GROUND=13;
+
+const LEVELS=[
+{
+ name:"Fase 1: O Mito e a Realidade", short:"O Mito e a Realidade",
+ intro:"Pule nos mitos para derrotá-los e bata nos blocos dourados de baixo para cima para descobrir a realidade.",
+ sky:["#8ecdf2","#e8f4fb"],hill:"#7bb36a",hill2:"#5f9a58",cols:84,
+ ground:[[0,24],[28,50],[54,83]],
+ plats:[[12,10,3],[30,10,3],[36,9,2],[58,10,4],[70,10,3]],
+ blocks:[[7,9],[40,9],[64,9]],
+ coins:[[9,11,4],[13,8,3],[31,8,3],[44,11,5],[59,8,4],[72,8,3],[77,12,3]],
+ enemies:[[16,"passiva"],[22,"silenciosa"],[34,"reclusa"],[46,"objeto de troca"],[60,"vítima indefesa"],[68,"frágil"]],
+ flag:80,
+ facts:[
+  "O mito: as mulheres medievais seriam passivas, silenciosas e reclusas, meros objetos de troca matrimonial ou vítimas indefesas de uma era brutal e hipermasculina.",
+  "A realidade: eram agentes econômicas ativas, administradoras de feudos, líderes místicas, hereges rebeldes e intelectuais pioneiras.",
+  "A história das mulheres exige ler nas entrelinhas dos textos escritos por homens."],
+ quiz:[
+  {q:"Qual era o mito sobre as mulheres da Idade Média?",o:["Que eram todas guerreiras","Que eram passivas, silenciosas e reclusas","Que todas sabiam ler latim"],a:1,why:"O mito as via como passivas, silenciosas e reclusas. A realidade mostra mulheres ativas na economia, na religião e na cultura."},
+  {q:"Por que é preciso \"ler nas entrelinhas\" para estudar as mulheres medievais?",o:["Porque os textos da época foram escritos majoritariamente por homens","Porque elas não existiam nos documentos","Porque os textos eram em código secreto"],a:0,why:"Os registros foram escritos por homens, então é preciso ler com atenção o que eles dizem sem dizer."}
+ ]
+},
+{
+ name:"Fase 2: Leis e Casamento", short:"Leis e Casamento",
+ intro:"Atravesse o reino das leis. Cada bloco revela uma regra que moldava a vida das mulheres.",
+ sky:["#f7c88a","#fbe9cf"],hill:"#9db068",hill2:"#7f9a55",cols:90,
+ ground:[[0,20],[24,44],[48,66],[70,89]],
+ plats:[[8,10,3],[26,10,3],[31,9,3],[50,10,3],[56,9,2],[74,10,4],[80,9,3]],
+ blocks:[[5,9],[36,9],[54,9],[78,9]],
+ coins:[[7,8,3],[27,8,3],[32,7,3],[40,12,4],[51,8,3],[75,8,4],[81,7,3],[85,12,3]],
+ enemies:[[12,"paterfamilias"],[18,"mundium"],[30,"wergeld"],[40,"tutela"],[60,"sem herança"],[84,"submissão"]],
+ flag:86,
+ facts:[
+  "Três heranças jurídicas: na tradição romana, subordinação total ao paterfamilias e exclusão de cargos públicos. Na germânica, tutela masculina permanente (mundium). Na celta, maior independência e direitos patrimoniais mesmo após o casamento.",
+  "Para proteger a riqueza da linhagem, as filhas recebiam um dote, mas perdiam o direito à sucessão territorial.",
+  "A brecha da viúva: livres do mundium do marido, as viúvas ricas tornavam-se as mulheres mais poderosas e independentes da sociedade, administrando grandes propriedades sozinhas.",
+  "O símbolo capilar: cabelos soltos e longos indicavam uma mulher solteira, disponível para o casamento. Corpo e cabelos cobertos eram sinal de compromisso conjugal."],
+ quiz:[
+  {q:"Qual tradição jurídica dava maior independência às mulheres?",o:["Romana","Germânica","Celta"],a:2,why:"A tradição celta garantia maior independência, liberdade na escolha do parceiro e direitos patrimoniais mesmo após o casamento."},
+  {q:"Quem eram as mulheres mais poderosas e independentes da sociedade medieval?",o:["As viúvas ricas","As filhas mais velhas","As noivas jovens"],a:0,why:"Livres do mundium do marido, as viúvas ricas administravam vastas propriedades sozinhas."}
+ ]
+},
+{
+ name:"Fase 3: Trabalho e Cidade", short:"Trabalho e Cidade",
+ intro:"Do campo à cidade: descubra o trabalho que sustentava a economia medieval.",
+ sky:["#f3a46b","#fde0b5"],hill:"#8a9a5a",hill2:"#6e7f48",cols:92,
+ ground:[[0,18],[22,40],[44,58],[62,91]],
+ plats:[[6,10,3],[24,10,3],[46,10,3],[51,9,3],[64,10,3],[72,10,5],[80,9,3]],
+ blocks:[[4,9],[34,9],[54,9],[68,9]],
+ coins:[[7,8,3],[25,8,3],[38,12,3],[47,8,3],[52,7,3],[65,8,3],[73,8,4],[81,7,3],[86,12,3]],
+ enemies:[[10,"moinho"],[16,"colheita"],[28,"tear"],[37,"corporação"],[48,"proibição"],[76,"mestria negada"]],
+ flag:88,
+ facts:[
+  "O motor rural: a economia feudal dependia da força feminina. Mulheres giravam moinhos, plantavam, colhiam, ordenhavam, tosquiavam ovelhas e fiavam, lavavam e teciam até a noite.",
+  "Na cidade, as mulheres dominavam os ofícios de fiação (lã, seda, chapéus). Em muitas cidades o mestre oficiava, mas elas executavam o trabalho qualificado.",
+  "Comércio e finanças: havia cervejeiras (Inglaterra), padeiras e salsicheiras. Viúvas de grandes mercadores gerenciavam frotas, e mulheres da comunidade judaica eram fundamentais no mercado de crédito.",
+  "No final da Idade Média, com o acirramento econômico, as corporações de ofício masculinas passaram a proibir legalmente as mulheres de atingirem a \"mestria\", expulsando-as do mercado formal."],
+ quiz:[
+  {q:"Quem dominava os ofícios de fiação (lã, seda, chapéus) nas cidades?",o:["Os mestres, sozinhos","As mulheres","As crianças"],a:1,why:"As mulheres dominavam a fiação e, em muitas cidades, executavam o trabalho qualificado enquanto o mestre oficiava."},
+  {q:"O que as corporações de ofício masculinas fizeram no fim da Idade Média?",o:["Passaram a proibir as mulheres de atingirem a mestria","Deram a elas todos os cargos","Fecharam as cidades"],a:0,why:"Com o acirramento econômico, as corporações expulsaram as mulheres do mercado formal ao negar a mestria."}
+ ]
+},
+{
+ name:"Fase 4: Imagens e Margens", short:"Imagens e Margens",
+ intro:"Cuidado com os estereótipos! Derrote as imagens falsas e descubra o que a história realmente mostra.",
+ sky:["#b88fd0","#f1d3e6"],hill:"#7a6aa3",hill2:"#5f5188",cols:92,
+ ground:[[0,16],[20,38],[42,56],[60,91]],
+ plats:[[5,10,3],[22,10,3],[27,9,3],[44,10,3],[62,10,5],[70,9,3],[78,10,3]],
+ blocks:[[3,9],[33,9],[50,9],[66,9]],
+ coins:[[6,8,3],[23,8,3],[28,7,3],[45,8,3],[63,8,4],[71,7,3],[79,8,3],[85,12,3]],
+ enemies:[[9,"Eva, a pecadora"],[14,"dama no pedestal"],[26,"mulher ardilosa"],[36,"caça às bruxas"],[48,"fragilidade"],[75,"heresia proibida"]],
+ flag:88,
+ facts:[
+  "O espectro da idealização masculina: Eva, a pecadora; Maria, a redentora (mãe e virgem); e a Dama do amor cortês, colocada num pedestal, distante e fria, como \"prêmio\" passivo do cavaleiro.",
+  "Nos fabliaux, contos populares e satíricos das cidades, a mulher era retratada como ardilosa, astuta, infiel e dominadora. A contradição revela o medo e a ansiedade masculina diante da inteligência prática feminina.",
+  "Cátaros e beguinas: nas heresias havia espaço para o ministério feminino. As cátaras podiam ser \"Perfeitas\", e as beguinas criaram comunidades independentes de estudo e misticismo sem votos monásticos.",
+  "A bruxa é um mito maioritariamente renascentista: a caça às bruxas com fogueiras foi um fenômeno do início da Idade Moderna. O Malleus Maleficarum foi publicado em 1486."],
+ quiz:[
+  {q:"Quando ocorreu a caça às bruxas massiva, com queimas em fogueiras?",o:["No início da Idade Moderna (Renascimento e Reforma)","Em toda a Alta Idade Média","Apenas no século V"],a:0,why:"A caça às bruxas maciça foi um fenômeno do início da Idade Moderna, e não o padrão da Idade Média."},
+  {q:"O que eram as beguinas?",o:["Rainhas guerreiras","Mulheres de comunidades independentes de estudo e misticismo, sem votos monásticos","Mercadoras de seda"],a:1,why:"As beguinas formaram comunidades independentes de estudo e misticismo, o que despertou o terror da Inquisição."}
+ ]
+},
+{
+ name:"Fase 5: Vozes e Joana d'Arc", short:"Vozes e Joana d'Arc",
+ intro:"A fase final! Reivindique a voz das mulheres e derrote o Preconceito (3 pulos na cabeça dele) para abrir o castelo.",
+ sky:["#2a2f55","#7b5a78"],hill:"#3b3a63",hill2:"#2c2b4d",cols:100,night:true,
+ ground:[[0,20],[24,44],[48,99]],
+ plats:[[8,10,3],[26,10,3],[31,9,3],[52,10,3],[60,9,3],[66,10,3]],
+ blocks:[[5,9],[37,9],[56,9]],
+ coins:[[9,8,3],[27,8,3],[32,7,3],[53,8,3],[61,7,3],[67,8,3],[88,12,4]],
+ enemies:[[14,"ignorância"],[30,"silêncio"],[40,"proibição de ensinar"]],
+ boss:[78,"PRECONCEITO"],
+ walls:[[99,0,12]],
+ flag:94,
+ facts:[
+  "Hildegarda de Bingen (nascida em 1098): usou a autoridade das visões divinas para escrever tratados de teologia e medicina (Causae et curae), compor músicas e repreender publicamente papas e imperadores.",
+  "Christine de Pisan (séc. XIV-XV), a primeira autora profissional: viúva jovem, sustentou a família escrevendo. Em \"A Cidade das Damas\" provou que a \"inferioridade\" feminina era fruto da falta de educação, não da natureza.",
+  "Joana d'Arc: camponesa iletrada que liderou exércitos e alterou o destino da Europa. Seu processo foi uma inquirição misógina: sua maior ofensa foi vestir roupas masculinas e portar armas."],
+ quiz:[
+  {q:"Quem escreveu \"A Cidade das Damas\", provando que a inferioridade feminina vinha da falta de educação?",o:["Hildegarda de Bingen","Christine de Pisan","Joana d'Arc"],a:1,why:"Christine de Pisan foi a primeira autora profissional e defendeu a educação das meninas."},
+  {q:"Qual foi a maior ofensa de Joana d'Arc segundo o julgamento?",o:["Ter nascido camponesa","Vestir roupas masculinas e portar armas","Saber escrever em latim"],a:1,why:"Vestir armadura era quebrar a ordem natural estabelecida para os sexos. Ela morreu por recusar voltar ao \"traje feminino\"."}
+ ]
+}];
+
+/* ================= ESTADO ================= */
+const cv=document.getElementById("c"),cx=cv.getContext("2d");
+cx.imageSmoothingEnabled=false;
+const ov=document.getElementById("ov"),card=document.getElementById("card");
+let S={lv:0,tiles:null,player:null,enemies:[],coins:[],cam:0,hearts:3,coinCount:0,factsFound:new Set(),
+ state:"menu",toast:"",toastT:0,flagLocked:false,time:0,totals:{coins:0,facts:0,quiz:0,stomps:0},lvStomps:0,lvCoins:0,tries:0,levelFacts:new Set()};
+const keys={l:false,r:false,j:false};
+let jumpHeld=false;
+
+/* ================= SOM ================= */
+let AC=null;
+function beep(f,d,t,v){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.type=t||"square";o.frequency.value=f;g.gain.value=v||.04;o.connect(g);g.connect(AC.destination);o.start();g.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);o.stop(AC.currentTime+d)}catch(e){}}
+const sfx={jump:()=>beep(520,.12),coin:()=>{beep(880,.08);setTimeout(()=>beep(1180,.1),70)},stomp:()=>beep(200,.12,"sawtooth"),hurt:()=>beep(130,.25,"sawtooth"),fact:()=>{beep(660,.1);setTimeout(()=>beep(880,.1),90);setTimeout(()=>beep(1100,.16),180)},win:()=>{[523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,.18),i*130))}};
+
+/* ================= CONSTRUÇÃO DA FASE ================= */
+function buildLevel(i){
+ const L=LEVELS[i];S.lv=i;
+ const g=[];for(let r=0;r<ROWS;r++)g.push(new Array(L.cols).fill(0));
+ L.ground.forEach(([a,b])=>{for(let c=a;c<=b;c++){g[13][c]=1;g[14][c]=1}});
+ L.plats.forEach(([c,r,n])=>{for(let k=0;k<n;k++)g[r][c+k]=2});
+ L.blocks.forEach(([c,r],k)=>{g[r][c]=3});
+ (L.walls||[]).forEach(([c,r1,r2])=>{for(let r=r1;r<=r2;r++)g[r][c]=2});
+ S.tiles=g;
+ S.blockIdx={};L.blocks.forEach(([c,r],k)=>S.blockIdx[c+","+r]=k);
+ S.coins=[];L.coins.forEach(([c,r,n])=>{for(let k=0;k<n;k++)S.coins.push({x:(c+k)*T+8,y:r*T+8,w:16,h:16,got:false,ph:Math.random()*6})});
+ S.enemies=[];
+ L.enemies.forEach(([c,label])=>S.enemies.push({x:c*T+2,y:GROUND*T-28,w:28,h:28,dir:-1,spd:1,label,hp:1,boss:false,dead:false,t:0}));
+ if(L.boss){const [c,label]=L.boss;S.enemies.push({x:c*T,y:GROUND*T-60,w:60,h:60,dir:-1,spd:1.1,label,hp:3,boss:true,dead:false,t:0,flash:0})}
+ S.player={x:2*T,y:GROUND*T-44,w:24,h:42,vx:0,vy:0,on:false,dir:1,coy:0,inv:0,anim:0};
+ S.player.y=GROUND*T-42;
+ S.cam=0;S.hearts=3;S.lvStomps=0;S.lvCoins=0;S.levelFacts=new Set();
+ S.flagLocked=!!L.boss;
+}
+function solidAt(c,r){if(c<0||c>=S.tiles[0].length)return true;if(r<0)return false;if(r>=ROWS)return false;return S.tiles[r][c]!==0}
+function overlapTiles(x,y,w,h){const out=[];const c1=Math.floor(x/T),c2=Math.floor((x+w-.01)/T),r1=Math.floor(y/T),r2=Math.floor((y+h-.01)/T);for(let r=r1;r<=r2;r++)for(let c=c1;c<=c2;c++)if(solidAt(c,r))out.push([c,r]);return out}
+
+/* ================= LÓGICA ================= */
+function say(t){S.toast=t;S.toastT=140}
+function restartLevel(msg){S.tries++;buildLevel(S.lv);say(msg||"Tente de novo!")}
+
+function update(){
+ const p=S.player,L=LEVELS[S.lv];
+ S.time++;if(S.toastT>0)S.toastT--;
+ // movimento horizontal
+ const target=(keys.r?1:0)-(keys.l?1:0);
+ p.vx+=(target*3.4-p.vx)*.25;
+ if(target)p.dir=target;
+ if(Math.abs(p.vx)<.05)p.vx=0;
+ // pulo
+ if(p.on)p.coy=6;else if(p.coy>0)p.coy--;
+ if(keys.j&&!jumpHeld&&p.coy>0){p.vy=-11;p.on=false;p.coy=0;sfx.jump()}
+ if(!keys.j&&p.vy<-4)p.vy*=.6;
+ jumpHeld=keys.j;
+ p.vy=Math.min(p.vy+.5,12);
+ // X
+ p.x+=p.vx;
+ for(const [c,r] of overlapTiles(p.x,p.y,p.w,p.h)){if(p.vx>0)p.x=c*T-p.w;else if(p.vx<0)p.x=(c+1)*T;p.vx=0}
+ if(p.x<0)p.x=0;
+ // Y
+ p.y+=p.vy;p.on=false;
+ const hits=overlapTiles(p.x,p.y,p.w,p.h);
+ if(hits.length){
+  if(p.vy>0){const r=hits[0][1];p.y=r*T-p.h;p.on=true;p.vy=0}
+  else if(p.vy<0){
+   const r=hits[0][1];p.y=(r+1)*T;p.vy=1;
+   // acerta bloco de fato (o mais próximo do centro)
+   let best=null,bd=1e9;for(const [c,rr] of hits){if(S.tiles[rr][c]===3){const d=Math.abs(c*T+16-(p.x+p.w/2));if(d<bd){bd=d;best=[c,rr]}}}
+   if(best)openFact(best[0],best[1]);
+  }
+ }
+ if(p.inv>0)p.inv--;
+ if(p.y>H+80){hurtDie("Cuidado com os buracos!");return}
+ // moedas
+ for(const c of S.coins){if(!c.got&&p.x<c.x+c.w&&p.x+p.w>c.x&&p.y<c.y+c.h&&p.y+p.h>c.y){c.got=true;S.lvCoins++;sfx.coin()}}
+ // inimigos
+ for(const e of S.enemies){
+  if(e.dead){e.t++;continue}
+  e.x+=e.dir*e.spd;
+  const ac=Math.floor((e.dir>0?e.x+e.w+1:e.x-1)/T);
+  const mid=Math.floor((e.y+e.h/2)/T),foot=Math.floor((e.y+e.h+2)/T);
+  if(solidAt(ac,mid)||!solidAt(ac,foot)){e.dir*=-1;e.x+=e.dir*e.spd*2}
+  if(e.flash>0)e.flash--;
+  if(p.x<e.x+e.w&&p.x+p.w>e.x&&p.y<e.y+e.h&&p.y+p.h>e.y){
+   if(p.vy>0&&(p.y+p.h-e.y)<22){
+    e.hp--;p.vy=-8.5;sfx.stomp();e.flash=20;
+    if(e.hp<=0){e.dead=true;e.t=0;S.lvStomps++;if(e.boss){S.flagLocked=false;say("Preconceito derrotado! Vá até a bandeira!");sfx.fact()}}
+   }else if(p.inv<=0){
+    S.hearts--;p.inv=100;p.vy=-6;sfx.hurt();
+    if(S.hearts<=0){hurtDie("Acabaram os corações! Tente de novo.");return}
+   }
+  }
+ }
+ S.enemies=S.enemies.filter(e=>!(e.dead&&e.t>25));
+ // bandeira
+ const fx=L.flag*T;
+ if(p.x+p.w>fx&&p.x<fx+14){
+  if(S.flagLocked){if(S.time%90===0)say("Derrote o Preconceito primeiro!")}
+  else finishLevel();
+ }
+ // câmera
+ const want=p.x-W*.4;S.cam+=(want-S.cam)*.12;
+ S.cam=Math.max(0,Math.min(S.cam,L.cols*T-W));
+}
+function hurtDie(msg){sfx.hurt();restartLevel(msg)}
+
+function openFact(c,r){
+ const k=S.blockIdx[c+","+r];S.tiles[r][c]=4;sfx.fact();
+ S.levelFacts.add(k);
+ const L=LEVELS[S.lv];
+ S.state="modal";
+ showCard(`<h2>Descoberta ${S.levelFacts.size} de ${L.facts.length}</h2><p>${L.facts[k]}</p><button class="btn" id="go">Continuar</button>`);
+ document.getElementById("go").onclick=()=>{hideCard();S.state="play"};
+}
+
+function finishLevel(){
+ const L=LEVELS[S.lv];S.state="modal";sfx.win();
+ S.totals.coins+=S.lvCoins;S.totals.facts+=S.levelFacts.size;S.totals.stomps+=S.lvStomps;
+ const items=L.facts.map((f,i)=>`<li class="${S.levelFacts.has(i)?"got":""}">${f}</li>`).join("");
+ showCard(`<h1>Fase concluída!</h1><p class="sub">${L.short}</p><p>Moedas: ${S.lvCoins} | Descobertas: ${S.levelFacts.size}/${L.facts.length} | Mitos derrotados: ${S.lvStomps}</p><h2>O que você precisa saber desta fase</h2><ul class="facts">${items}</ul><button class="btn" id="go">Ir para o quiz</button>`);
+ document.getElementById("go").onclick=()=>runQuiz(0);
+}
+function runQuiz(i){
+ const L=LEVELS[S.lv];
+ if(i>=L.quiz.length){
+  if(S.lv+1<LEVELS.length){buildLevel(S.lv+1);showIntro()}else showEnd();return;
+ }
+ const q=L.quiz[i];
+ showCard(`<h2>Quiz ${i+1} de ${L.quiz.length}</h2><p><b>${q.q}</b></p>${q.o.map((o,k)=>`<button class="opt" data-k="${k}">${o}</button>`).join("")}<p id="fb"></p>`);
+ const btns=[...card.querySelectorAll(".opt")];let done=false;
+ btns.forEach(b=>b.onclick=()=>{
+  if(done)return;done=true;const k=+b.dataset.k;
+  btns.forEach(x=>x.classList.remove("ok","no"));
+  btns[q.a].classList.add("ok");
+  if(k===q.a){S.totals.quiz++;beep(880,.15)}else{b.classList.add("no");beep(150,.2,"sawtooth")}
+  const fb=document.getElementById("fb");
+  fb.innerHTML=(k===q.a?"<b>Correto!</b> ":"<b>Quase!</b> ")+q.why+`<br><button class="btn" id="nx">Continuar</button>`;
+  document.getElementById("nx").onclick=()=>runQuiz(i+1);
+ });
+}
+function showEnd(){
+ const t=S.totals;const total=t.coins+t.facts*5+t.quiz*10+t.stomps*2;
+ const maxQ=LEVELS.reduce((a,l)=>a+l.quiz.length,0),maxF=LEVELS.reduce((a,l)=>a+l.facts.length,0);
+ const stars=t.quiz>=maxQ-1&&t.facts>=maxF-2?3:(t.quiz>=maxQ*.6?2:1);
+ showCard(`<h1>A Metade Não Mais Invisível</h1><p style="font-size:2em;margin:.2em 0">${"&#9733;".repeat(stars)}${"&#9734;".repeat(3-stars)}</p><p>A mulher medieval não foi uma vítima silenciosa da história. Ela moldou a economia, construiu o imaginário literário e desbravou atalhos intelectuais e religiosos contra um sistema que tentou confiná-la. Elas foram as arquitetas ocultas do mundo moderno.</p><p><b>Sua pontuação: ${total}</b><br><span class="small">Moedas ${t.coins} | Descobertas ${t.facts}/${maxF} | Quiz ${t.quiz}/${maxQ} | Mitos derrotados ${t.stomps}</span></p><p class="small">Baseado na obra de José Rivair Macedo (Aula 8: A Metade Invisível da Idade Média).</p><button class="btn" id="again">Jogar de novo</button>`);
+ document.getElementById("again").onclick=()=>showMenu();
+}
+
+/* ================= TELAS ================= */
+function showCard(html){card.innerHTML=html;ov.classList.add("show")}
+function hideCard(){ov.classList.remove("show")}
+function showIntro(){
+ const L=LEVELS[S.lv];S.state="modal";
+ showCard(`<h2>${L.name}</h2><p>${L.intro}</p><p class="small">Objetivo: chegue à bandeira no fim da fase.</p><button class="btn" id="go">Começar</button>`);
+ document.getElementById("go").onclick=()=>{hideCard();S.state="play"};
+}
+function showMenu(){
+ S.state="menu";S.totals={coins:0,facts:0,quiz:0,stomps:0};S.tries=0;
+ buildLevel(0);
+ showCard(`<h1>A Cavaleira</h1><p class="sub">A Metade Invisível da Idade Média</p>
+ <p><b>Objetivo:</b> guie a cavaleira por 5 fases, derrote os mitos sobre as mulheres medievais e descubra a realidade. No fim de cada fase, responda ao quiz.</p>
+ <p class="small"><b>Como jogar:</b> setas ou A/D para andar, espaço ou seta para cima para pular. Pule na cabeça dos mitos para derrotá-los. Bata nos blocos dourados de baixo para cima para ler uma descoberta. No celular, use os botões na tela (deixe o aparelho na horizontal).</p>
+ <button class="btn" id="go">Jogar</button>
+ <p class="small" style="margin-top:.8em">Ou escolha a fase:</p><div class="grid">${LEVELS.map((l,i)=>`<button class="btn sm" data-lv="${i}">${i+1}</button>`).join("")}</div>`);
+ document.getElementById("go").onclick=()=>{buildLevel(0);showIntro()};
+ card.querySelectorAll("[data-lv]").forEach(b=>b.onclick=()=>{buildLevel(+b.dataset.lv);showIntro()});
+}
+
+/* ================= DESENHO ================= */
+function rr(x,y,w,h,c){cx.fillStyle=c;cx.fillRect(Math.round(x),Math.round(y),w,h)}
+function drawBg(){
+ const L=LEVELS[S.lv];
+ const gr=cx.createLinearGradient(0,0,0,H);gr.addColorStop(0,L.sky[0]);gr.addColorStop(1,L.sky[1]);cx.fillStyle=gr;cx.fillRect(0,0,W,H);
+ if(L.night){cx.fillStyle="#fff";for(let i=0;i<50;i++){const x=(i*137%W),y=(i*71%260);cx.globalAlpha=.4+.4*Math.sin(S.time*.03+i);cx.fillRect(x,y,2,2)}cx.globalAlpha=1;
+  cx.fillStyle="#e8e2c8";cx.beginPath();cx.arc(660,80,30,0,7);cx.fill();cx.fillStyle=L.sky[0];cx.beginPath();cx.arc(672,74,26,0,7);cx.fill()}
+ else{cx.fillStyle="rgba(255,255,255,.8)";for(let i=0;i<7;i++){const x=((i*260-S.cam*.2)%(W+260)+W+260)%(W+260)-130,y=50+(i*37%110);cx.fillRect(x,y,70,18);cx.fillRect(x+14,y-10,44,12)}}
+ // colinas
+ for(const [col,par,amp,base] of [[L.hill2,.25,60,330],[L.hill,.5,45,370]]){
+  cx.fillStyle=col;cx.beginPath();cx.moveTo(0,H);
+  for(let x=0;x<=W;x+=16){const wx=x+S.cam*par;cx.lineTo(x,base-Math.abs(Math.sin(wx*.006+par*9))*amp-Math.sin(wx*.017)*10)}
+  cx.lineTo(W,H);cx.fill();
+ }
+ // castelo ao fundo (fase 5) ou castelinho distante
+ const cxp=(LEVELS[S.lv].flag*T+120)-S.cam;
+ if(cxp>-200&&cxp<W+200){const bx=cxp,by=GROUND*T;
+  const c=L.night?"#2b2748":"#a89a82";rr(bx,by-150,150,150,c);rr(bx-20,by-190,44,190,c);rr(bx+126,by-190,44,190,c);
+  for(let i=0;i<4;i++){rr(bx+i*40,by-162,22,12,c)}
+  rr(bx-20,by-206,44,16,c);rr(bx+126,by-206,44,16,c);
+  rr(bx+62,by-70,26,70,L.night?"#13102a":"#4a3b2c");
+  cx.fillStyle=L.night?"#ffd86b":"#d9c27a";cx.fillRect(bx+14,by-120,10,22);cx.fillRect(bx+126,by-120,10,22);
+  rr(bx+12,by-250,3,44,"#4a3b2c");rr(bx+15,by-250,24,14,"#9b2335");
+ }
+}
+function drawTiles(){
+ const L=LEVELS[S.lv];
+ const c1=Math.max(0,Math.floor(S.cam/T)),c2=Math.min(L.cols-1,Math.floor((S.cam+W)/T));
+ for(let r=0;r<ROWS;r++)for(let c=c1;c<=c2;c++){
+  const t=S.tiles[r][c];if(!t)continue;const x=c*T-S.cam,y=r*T;
+  if(t===1){
+   rr(x,y,T,T,"#7a5232");
+   if(r===GROUND||!(S.tiles[r-1]&&S.tiles[r-1][c]===1)){}
+   if(r===GROUND){rr(x,y,T,7,"#5b9a3c");rr(x,y+7,T,3,"#477a2d")}
+   rr(x+4,y+14,6,4,"#5e3e24");rr(x+18,y+22,8,4,"#5e3e24");
+  }else if(t===2){
+   rr(x,y,T,T,"#9a9a9a");rr(x,y,T,2,"#c4c4c4");
+   rr(x,y+15,T,2,"#6d6d6d");rr(x+15,y,2,16,"#6d6d6d");rr(x+7,y+16,2,16,"#6d6d6d");rr(x+23,y+16,2,16,"#6d6d6d");
+   rr(x,y+T-2,T,2,"#6d6d6d");
+  }else if(t===3){
+   const bob=Math.sin(S.time*.1+c)*1.5;
+   rr(x,y+bob,T,T,"#c9962b");rr(x+2,y+2+bob,T-4,T-4,"#f0c04a");rr(x+2,y+2+bob,T-4,3,"#fbe39a");
+   cx.fillStyle="#7a4b0c";cx.font="bold 22px Georgia";cx.textAlign="center";cx.fillText("?",x+16,y+24+bob);
+   rr(x,y+bob,T,2,"#7a4b0c");rr(x,y+T-2+bob,T,2,"#7a4b0c");
+  }else if(t===4){rr(x,y,T,T,"#6b5a3a");rr(x+3,y+3,T-6,T-6,"#85714a")}
+ }
+}
+function drawCoins(){
+ for(const c of S.coins){if(c.got)continue;const x=c.x-S.cam;if(x<-20||x>W+20)continue;
+  const w=Math.abs(Math.cos(S.time*.08+c.ph))*14+2;
+  cx.fillStyle="#7a4b0c";cx.fillRect(Math.round(x+8-w/2-1),c.y-1,w+2,18);
+  cx.fillStyle="#f6c93a";cx.fillRect(Math.round(x+8-w/2),c.y,w,16);
+  cx.fillStyle="#fff3a8";cx.fillRect(Math.round(x+8-w/2)+1,c.y+2,Math.max(1,w/3),12)}
+}
+function label(txt,x,y,col){
+ cx.font="bold 11px Georgia";cx.textAlign="center";const w=cx.measureText(txt).width+10;
+ cx.fillStyle="rgba(20,12,8,.78)";cx.fillRect(Math.round(x-w/2),Math.round(y-12),w,16);
+ cx.fillStyle=col||"#ffe9a8";cx.fillText(txt,Math.round(x),Math.round(y));
+}
+function drawEnemy(e){
+ const x=e.x-S.cam,y=e.y;if(x<-120||x>W+120)return;
+ if(e.dead){cx.save();cx.globalAlpha=Math.max(0,1-e.t/25);rr(x,y+e.h*.6,e.w,e.h*.4,"#3a2a45");cx.restore();return}
+ const s=e.boss?2.1:1,bob=Math.sin(S.time*.2+e.x)*1.5;
+ const col=e.flash>0&&S.time%4<2?"#fff":(e.boss?"#2a1530":"#3a2a45");
+ rr(x,y+bob,e.w,e.h,col);
+ rr(x+2*s,y-3*s+bob,e.w-4*s,4*s,col);
+ // olhos bravos
+ const ex=e.dir>0?1:0;
+ rr(x+5*s,y+8*s+bob,7*s,6*s,"#fff");rr(x+16*s,y+8*s+bob,7*s,6*s,"#fff");
+ rr(x+(7+ex*3)*s,y+10*s+bob,3*s,4*s,"#000");rr(x+(18+ex*3)*s,y+10*s+bob,3*s,4*s,"#000");
+ rr(x+4*s,y+5*s+bob,9*s,2*s,"#c0392b");rr(x+15*s,y+5*s+bob,9*s,2*s,"#c0392b");
+ // pés
+ rr(x+2*s,y+e.h-4*s+bob+ (S.time%20<10?0:2),9*s,4*s,"#1a0f20");rr(x+16*s,y+e.h-4*s+bob+(S.time%20<10?2:0),9*s,4*s,"#1a0f20");
+ if(e.boss){// coroa de espinhos e vida
+  for(let i=0;i<5;i++)rr(x+4+i*11,y-12+bob,6,12,"#6b1f1f");
+  for(let i=0;i<3;i++)rr(x+8+i*16,y-28,12,10,i<e.hp?"#d9534f":"#444");
+  label(e.label,x+e.w/2,y-34,"#ff9c9c");
+ }else label(e.label,x+e.w/2,y-8+bob,"#ffe9a8");
+}
+function drawHero(){
+ const p=S.player,x=Math.round(p.x-S.cam),y=Math.round(p.y);
+ if(p.inv>0&&S.time%6<3)return;
+ const d=p.dir,walk=Math.abs(p.vx)>.5&&p.on,leg=walk?(S.time%12<6?3:-3):0;
+ cx.save();cx.translate(x+p.w/2,0);cx.scale(d,1);cx.translate(-p.w/2,0);
+ // espada
+ rr(18,y+22,3,16,"#cfd6df");rr(15,y+30,9,3,"#c9962b");
+ // pernas / botas
+ rr(5,y+34,6,8,"#4a3220");rr(13+(walk?leg:0)*0,y+34,6,8,"#4a3220");
+ if(walk){rr(5+leg,y+38,7,4,"#3a2616")}
+ // vestido azul
+ rr(3,y+22,18,16,"#2c4fa8");rr(1,y+34,22,4,"#1d3f8a");rr(3,y+22,18,2,"#c9962b");
+ // armadura peito
+ rr(4,y+14,16,10,"#aeb7c4");rr(4,y+14,16,2,"#dfe5ed");rr(11,y+14,2,10,"#8b95a4");
+ // braços
+ rr(1,y+15,4,9,"#aeb7c4");rr(19,y+15,4,9,"#aeb7c4");
+ // cabeça
+ rr(6,y+4,12,11,"#f2c9a0");
+ rr(13,y+8,2,3,"#222");
+ // trança
+ rr(2,y+8,4,14,"#6b3a1e");rr(1,y+20,4,3,"#6b3a1e");
+ // elmo
+ rr(4,y,16,6,"#aeb7c4");rr(4,y+2,3,10,"#aeb7c4");rr(17,y,3,5,"#8b95a4");rr(4,y,16,1,"#dfe5ed");
+ // pluma
+ rr(8,y-6,3,6,"#9b2335");rr(11,y-9,4,9,"#c0392b");rr(15,y-6,3,6,"#9b2335");
+ cx.restore();
+}
+function drawFlag(){
+ const L=LEVELS[S.lv],x=L.flag*T-S.cam;if(x<-60||x>W+60)return;
+ const top=GROUND*T-190;
+ rr(x+10,top,5,190,"#d8d2c0");rr(x+8,top-6,9,9,"#c9962b");
+ const col=S.flagLocked?"#7d7d7d":"#9b2335";
+ const w=Math.sin(S.time*.1)*3;
+ cx.fillStyle=col;cx.beginPath();cx.moveTo(x+15,top+6);cx.lineTo(x+60,top+18+w);cx.lineTo(x+15,top+40);cx.fill();
+ cx.fillStyle=S.flagLocked?"#aaa":"#f6c93a";cx.fillRect(x+26,top+16,8,8);
+ if(S.flagLocked){label("trancada",x+12,top-14,"#ddd")}
+}
+function drawHUD(){
+ const L=LEVELS[S.lv];
+ cx.fillStyle="rgba(20,12,8,.62)";cx.fillRect(0,0,W,30);
+ cx.textAlign="left";cx.font="bold 15px Georgia";cx.fillStyle="#fff";
+ for(let i=0;i<3;i++){cx.fillStyle=i<S.hearts?"#e74c3c":"#555";cx.fillText("♥",12+i*22,22)}
+ cx.fillStyle="#f6c93a";cx.fillText("● "+S.lvCoins+"/"+S.coins.length,92,21);
+ cx.fillStyle="#ffe9a8";cx.fillText("? "+S.levelFacts.size+"/"+L.facts.length,176,21);
+ cx.textAlign="right";cx.fillStyle="#fff";cx.fillText(L.name,W-12,21);
+ if(S.toastT>0){cx.textAlign="center";cx.font="bold 18px Georgia";const w=cx.measureText(S.toast).width+30;cx.globalAlpha=Math.min(1,S.toastT/20);cx.fillStyle="rgba(20,12,8,.85)";cx.fillRect(W/2-w/2,48,w,30);cx.fillStyle="#ffe9a8";cx.fillText(S.toast,W/2,69);cx.globalAlpha=1}
+}
+function render(){
+ drawBg();
+ cx.save();drawTiles();drawCoins();drawFlag();S.enemies.forEach(drawEnemy);if(S.player)drawHero();cx.restore();
+ drawHUD();
+}
+
+/* ================= LOOP ================= */
+let last=0,acc=0;
+function loop(ts){
+ const dt=Math.min(100,ts-last);last=ts;acc+=dt;
+ while(acc>=1000/60){acc-=1000/60;if(S.state==="play")update();else S.time++}
+ render();requestAnimationFrame(loop);
+}
+
+/* ================= CONTROLES ================= */
+const map={ArrowLeft:"l",KeyA:"l",ArrowRight:"r",KeyD:"r",ArrowUp:"j",KeyW:"j",Space:"j"};
+addEventListener("keydown",e=>{const k=map[e.code];if(k){keys[k]=true;e.preventDefault()}});
+addEventListener("keyup",e=>{const k=map[e.code];if(k){keys[k]=false;e.preventDefault()}});
+function bindBtn(id,k){const el=document.getElementById(id);
+ const on=e=>{e.preventDefault();keys[k]=true;el.classList.add("on")},off=e=>{e.preventDefault();keys[k]=false;el.classList.remove("on")};
+ el.addEventListener("pointerdown",on);el.addEventListener("pointerup",off);el.addEventListener("pointercancel",off);el.addEventListener("pointerleave",off);
+ el.addEventListener("contextmenu",e=>e.preventDefault());}
+bindBtn("bl","l");bindBtn("br","r");bindBtn("bj","j");
+addEventListener("blur",()=>{keys.l=keys.r=keys.j=false});
+
+showMenu();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
